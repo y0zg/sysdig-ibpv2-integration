@@ -64,10 +64,12 @@ ID                                                 Public IP         Private IP 
 kube-hou02-pabc5ec22b156647589c380a9c135e5eae-w1   184.172.247.204   10.76.196.182   free           normal   Ready    hou02   1.13.6_1522
 ```
 
-Try to retrieve metrics from the peer and a bunch of metrics will appear
+Try to retrieve metrics from the peer and a bunch of metrics will appear. If you receive `curl: (35) error:1401E412:SSL routines:CONNECT_CR_FINISHED:sslv3 alert bad certificate` error, ensure that you have enrolled against `TLS Certificate Authority`
 
 ```console
-$ curl -k https://184.172.247.204:32003/metrics --cert operator.pem --key operator.key -v
+$ PEER_ENDPOINT=184.172.247.204
+$ PEER_NODEPORT=32003
+$ curl -k https://$PEER_ENDPOINT:$PEER_NODEPORT/metrics --cert operator.pem --key operator.key -v
 ...
 # HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
 # TYPE promhttp_metric_handler_requests_total counter
@@ -80,7 +82,7 @@ promhttp_metric_handler_requests_total{code="503"} 0
 Let's try again without supplying the `cert` and `key` and **401** error will be received
 
 ```console
-curl -k https://184.172.247.204:32003/metrics -v
+curl -k https://$PEER_ENDPOINT:$PEER_NODEPORT/metrics -v
 ...
 < HTTP/1.1 401 Unauthorized
 ```
@@ -160,7 +162,7 @@ Make sure the agent is still running
 ```console
 $ kubectl get pods -n ibm-observe
 NAME                 READY   STATUS    RESTARTS   AGE
-sysdig-agent-g6c8v   0/1     Running   0          115s
+sysdig-agent-g6c8v   1/1     Running   0          115s
 ```
 
 ## View the new integration in Sysdig Monitor
