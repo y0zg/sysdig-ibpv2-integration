@@ -4,8 +4,7 @@ Starting in Hyperledger Fabric v1.4, operational metrics are available to be acc
 
 Assumptions:
 
-* Name of organization is **Org1**
-* Kubernetes free cluster is used
+* Name of organization is **Org1** (adjust accordingly)
 
 ## Prerequisites
 
@@ -13,7 +12,7 @@ You already have an IBPv2 network running and Sysdig connected to the Kubernetes
 
 ## Create Operator Certificate-Key pair
 
-Retrieving metrics from the peer requires mutual TLS authentication, so we need to generate a certificate-key pair. In **IBPv2 console**, go to **Nodes** > **Org1 CA** > **TLS Certificate Authority**. Register a new user with enroll ID `operator` and enroll secret `operatorpw`. Enroll this user and download the wallet. The file name of the wallet is assumed to be `Operator Org1.json`
+Retrieving metrics from the peer requires mutual TLS authentication, so we need to generate a certificate-key pair. In **IBPv2 console**, go to **Nodes** > **Org1 CA**. Register a new user with enroll ID `operator` and enroll secret `operatorpw`. Enroll this user against the **TLS Certificate Authority** and download the wallet. The file name of the wallet is assumed to be `Operator Org1.json`
 
 ![enroll](images/pic1.png)
 
@@ -25,9 +24,27 @@ jq -r .private_key $FILE_NAME | base64 --decode > operator.key
 jq -r .cert $FILE_NAME | base64 --decode > operator.pem
 ```
 
-## Check Metrics
+## Retrieve peer address
 
-Before we proceed with the integration, let's check whether we are able to retrieve the metrics manually. View the namespace where IBPv2 network reside. In the example below, `b4ecd3` is the namespace we are going to target in the subsequent steps.
+Before we proceed with the integration, let's check whether we are able to retrieve the metrics manually. The approach is different depending you are running on **free** or **paid** Kubernetes cluster
+
+### Paid Kubernetes Cluster
+
+Export the peer information. Assume that the filename of the json file is `peer1org1.json`
+
+![enroll](images/pic2.png)
+
+Retrieve the Operation URL by issuing the following
+
+```console
+PEER_FILE_NAME=peer1org1.json
+PEER_ADDRESS=$(cat $PEER_FILE_NAME | jq -r .operations_url)
+echo $PEER_ADDRESS
+```
+
+### Free Kubernetes Cluster
+
+View the namespace where IBPv2 network reside. In the example below, `b4ecd3` is the namespace we are going to target in the subsequent steps.
 
 ```console
 $ kubectl get ns
@@ -64,12 +81,18 @@ ID                                                 Public IP         Private IP 
 kube-hou02-pabc5ec22b156647589c380a9c135e5eae-w1   184.172.247.204   10.76.196.182   free           normal   Ready    hou02   1.13.6_1522
 ```
 
+Consolidate the `NodePort` and public IP together:
+
+```console
+PEER_ADDRESS=https://184.172.247.204:32003
+```
+
+## Retrieve metrics manually
+
 Try to retrieve metrics from the peer and a bunch of metrics will appear. If you receive `curl: (35) error:1401E412:SSL routines:CONNECT_CR_FINISHED:sslv3 alert bad certificate` error, ensure that you have enrolled against `TLS Certificate Authority`
 
 ```console
-$ PEER_ENDPOINT=184.172.247.204
-$ PEER_NODEPORT=32003
-$ curl -k https://$PEER_ENDPOINT:$PEER_NODEPORT/metrics --cert operator.pem --key operator.key -v
+$ curl -k $PEER_ADDRESS/metrics --cert operator.pem --key operator.key -v
 ...
 # HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
 # TYPE promhttp_metric_handler_requests_total counter
@@ -79,15 +102,7 @@ promhttp_metric_handler_requests_total{code="503"} 0
 * Connection #0 to host 184.172.247.204 left intact
 ```
 
-Let's try again without supplying the `cert` and `key` and **401** error will be received
-
-```console
-curl -k https://$PEER_ENDPOINT:$PEER_NODEPORT/metrics -v
-...
-< HTTP/1.1 401 Unauthorized
-```
-
-Create a secret in the namespace `ibm-observe`, which is the namespace where sysdig agent components reside
+Create a secret in the namespace `ibm-observe`, which is the namespace where sysdig agent components reside (ensure you have installed Sysdig agent in your Kubernetes cluster. Refer to official documentations)
 
 ```console
 $ ORG_NAME=org1
@@ -112,6 +127,9 @@ Add secret `org1-operator-secret` in `prod-sysdig-agent-daemonset-v2.yaml`. Noti
           name: sysdig-agent-config
         - mountPath: /opt/draios/etc/kubernetes/secrets
           name: sysdig-agent-secrets
+        - mountPath: /host/etc/os-release
+          name: osrel
+          readOnly: true
         - mountPath: /opt/draios/etc/kubernetes/ibp-org1 # <-- add here
           name: ibp-org1-secrets
 ...
@@ -157,7 +175,7 @@ configmap/sysdig-agent configured
 kubectl get configmap sysdig-agent -n=ibm-observe -o=yaml > prod-sysdig-agent-configmap.yaml
 ```
 
-Make sure the agent is still running
+Make sure the agent has status `Running` and `1/1` ready
 
 ```console
 $ kubectl get pods -n ibm-observe
@@ -169,11 +187,11 @@ sysdig-agent-g6c8v   1/1     Running   0          115s
 
 Go back to Sysdig monitor and click on **Sysdig Spotlight Notification** (bottom left corner). After 5-10 minutes, there should be a Prometheus logo, which signifies integration with Prometheus metrics of IBP
 
-![New integration](images/pic2.png)
+![New integration](images/pic3.png)
 
 In **Explore** tab, view that you can see the Prometheus metrics
 
-![Prometheus Metrics](images/pic3.png)
+![Prometheus Metrics](images/pic4.png)
 
 ## References
 
