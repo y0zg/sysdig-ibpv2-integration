@@ -1,5 +1,5 @@
 *.json
 *.yaml
-DS_Store
+.DS_Store
 *.key
 *.pem
